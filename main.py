@@ -29,7 +29,8 @@ class ClonedVoice:
             "Accept": "audio/mpeg",
             "Content-Type": "application/json",
             "xi-api-key": api_key
-        }
+        }    
+    
 
     def generate_audio(self, sentence):
 
@@ -57,14 +58,14 @@ class ClonedVoice:
 
 
 
-def print_preds(predictions, video_frame, pipeline, cloned_voice):
+def print_preds(predictions, video_frame, pipeline, cloned_voice, trick):
     render_boxes(predictions, video_frame)
 
     global trick_start_time, trick_frame_count, total_frame_count, non_trick_frame_count
 
     # If the dog is sitting, initialize tracking variables
     if trick_start_time is None and predictions["predictions"]:
-        if predictions["predictions"][0]["class"] == "sitting":
+        if predictions["predictions"][0]["class"] == trick:
             trick_start_time = time.time()
             trick_frame_count = 1
             total_frame_count = 1
@@ -75,7 +76,7 @@ def print_preds(predictions, video_frame, pipeline, cloned_voice):
     if trick_start_time is not None:
         total_frame_count += 1
 
-        if predictions["predictions"] and predictions["predictions"][0]["class"] == "sitting":
+        if predictions["predictions"] and predictions["predictions"][0]["class"] == trick:
             trick_frame_count += 1
             non_trick_frame_count = 0
 
@@ -115,6 +116,16 @@ def print_preds(predictions, video_frame, pipeline, cloned_voice):
 
 
 if __name__=="__main__":
+
+    # command line arg parser
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--trick", help="The trick you want to train your dog to do. Either sitting or lying.")
+    args = parser.parse_args()
+
+    if args.trick not in ["sitting", "lying"]:
+        parser.print_help()
+        raise ValueError("Trick must be either sitting or lying") 
     
     load_dotenv()
 
@@ -127,12 +138,16 @@ if __name__=="__main__":
         model_id="goldeneye/6",
         api_key=roboflow_api_key,
         video_reference=0,
-        on_prediction=lambda preds, frame: print_preds(preds, frame, pipeline, cloned_voice),
+        on_prediction=lambda preds, frame: print_preds(preds, frame, pipeline, cloned_voice, args.trick),
         confidence=0.80
     )
 
+    commands = {
+        "sitting": "Ollie Sit! If you sit, you'll get a treat!",
+        "lying": "Laydown Ollie, You'll get a treat if you lay down!"
+    }
 
     cloned_voice.generate_audio("Welcome to goldeneye, the best golden retriever trainer.")
-    cloned_voice.generate_audio("Sit Ollie, sit!")
+    cloned_voice.generate_audio(commands[args.trick])
 
     pipeline.start()
