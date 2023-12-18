@@ -32,7 +32,7 @@ class ClonedVoice:
         }    
     
 
-    def generate_audio(self, sentence):
+    def generate_audio(self, command, sentence):
 
         data = {
             "text": sentence,
@@ -45,16 +45,18 @@ class ClonedVoice:
 
         response = requests.post(self.url, json=data, headers=self.headers)
 
-        with open('output.mp3', 'wb') as f:
+        with open(f"{command}.mp3", "wb") as f:
             for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
                 if chunk:
                     f.write(chunk)
+    
+    
+    def speak(self, command, blocking=False):
 
-        return playsound('./output.mp3')
-    
-    
-    def play_again(self):
-        threading.Thread(target=lambda: playsound('./output.mp3')).start()
+        if blocking:
+            playsound(f"./{command}.mp3")
+        else:
+            threading.Thread(target=lambda: playsound(f"./{command}.mp3")).start()
 
 
 
@@ -88,7 +90,7 @@ def print_preds(predictions, video_frame, pipeline, cloned_voice, trick):
                 non_trick_frame_count = 0
                 total_frame_count = 0
                 logging.info("Dog is not doing trick, resetting trick evaluation")
-                cloned_voice.play_again()
+                cloned_voice.speak("command")
                 return
             
         
@@ -102,15 +104,14 @@ def print_preds(predictions, video_frame, pipeline, cloned_voice, trick):
                 total_frame_count = 0
 
                 pipeline.terminate()
-                cloned_voice.generate_audio("Good boy Ollie! Here's a treat!")
-
+                cloned_voice.speak("affirmation")
 
             else:
                 trick_start_time = None
                 trick_frame_count = 0
                 non_trick_frame_count = 0
                 total_frame_count = 0
-                cloned_voice.play_again()
+                cloned_voice.speak("command")
                 logging.info("Percentage of tricks detected was too low during timeframe.")
             
 
@@ -127,27 +128,34 @@ if __name__=="__main__":
         parser.print_help()
         raise ValueError("Trick must be either sitting or lying") 
     
+    # Load environment variables
     load_dotenv()
-
     roboflow_api_key = os.getenv("ROBOFLOW_API_KEY")
     elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 
-    cloned_voice = ClonedVoice(elevenlabs_api_key)
 
+    # Generate audio files from voice clone using eleven labs
+    commands = {
+        "sitting": """Do you want a treat? Ollie Sit!""",
+        "lying": "Do you want a treat Ollie? Lay down!"
+    }
+    cloned_voice = ClonedVoice(elevenlabs_api_key)
+    cloned_voice.generate_audio("boot", "Welcome to goldeneye A treat dispenser built with eyes and a voice.")
+    cloned_voice.generate_audio("command", commands[args.trick])
+    cloned_voice.generate_audio("affirmation", f"Good Boy for {args.trick} Ollie! Here's a treat!")
+
+    # Init the roboflow inference pipeline
     pipeline = InferencePipeline.init(
-        model_id="goldeneye/6",
+        model_id="goldeneye/8",
         api_key=roboflow_api_key,
         video_reference=0,
         on_prediction=lambda preds, frame: print_preds(preds, frame, pipeline, cloned_voice, args.trick),
-        confidence=0.80
+        confidence=0.70
     )
 
-    commands = {
-        "sitting": "Ollie Sit! If you sit, you'll get a treat!",
-        "lying": "Laydown Ollie, You'll get a treat if you lay down!"
-    }
+    # Welcome the user and issue trick command.
+    cloned_voice.speak("boot", blocking=True)
+    cloned_voice.speak("command")
 
-    cloned_voice.generate_audio("Welcome to goldeneye, the best golden retriever trainer.")
-    cloned_voice.generate_audio(commands[args.trick])
-
+    # Start the pipeline
     pipeline.start()
